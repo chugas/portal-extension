@@ -1,5 +1,5 @@
 {
-    "name": "its/portal-starter",
+    "name": "chugas/portal-extension",
     "description": "Permite definir las customizaciones del sitio que quieras.",
     "type": "bolt-extension",
     "keywords": [
