@@ -3,69 +3,108 @@
 namespace Bolt\Extension\Its\Portal;
 
 use Bolt\Extension\SimpleExtension;
+use Silex\Application;
 use Bolt\Extension\Its\Portal\Controller\FrontendController;
 use Bolt\Extension\Its\Portal\Controller\BackendController;
+use Bolt\Extension\Its\Portal\Controller\InfiniteScrollController;
+use Bolt\Asset\File\JavaScript;
+use Bolt\Asset\Target;
+use Bolt\Controller\Zone;
+use Twig_Markup;
+use Bolt\Extension\Its\Portal\Suscriptores;
 
 /**
  * Portal extension class.
  *
  * @author Gaston Caldeiro <chugas488@gmail.com>
  */
-class PortalExtension extends SimpleExtension
-{
+class PortalExtension extends SimpleExtension {
+
+    protected function registerServices(Application $app) {
+        $app['suscriptores'] = $app->share(function ($app) {
+            return new Suscriptores($app);
+        });
+    }
+
+    protected function registerAssets() {
+        $start = (new Javascript())
+                ->setFileName('js/start.js')
+                ->setLate(true)
+                ->setZone(Zone::FRONTEND);
+
+        $jscroll = (new Javascript())
+                ->setFileName('js/jscroll/jquery.jscroll.min.js')
+                ->setLate(true)
+                ->setZone(Zone::FRONTEND);
+
+        return [
+            $start,
+            $jscroll
+        ];
+    }
+
     /**
      * {@inheritdoc}
      */
-    protected function registerTwigPaths()
-    {
+    protected function registerTwigPaths() {
         return ['templates'];
     }
 
-    public function registerTwigFilters()
-    {
+    public function registerTwigFilters() {
         return [
-            'chunk'  => 'chunk'
+            'chunk' => 'chunk'
         ];
     }
 
-    public function registerTwigFunctions()
-    {
+    public function registerTwigFunctions() {
         return [
-            'recetasrelacionadas'  => 'recetasrelacionadas',
+            'recetasrelacionadas' => 'recetasrelacionadas',
+            'infiniteScroll' => 'twigInfiniteScroll',
+            'mail_footer' => ['mailFooter', ['is_safe' => ['html']]],
         ];
     }
-    
+
+    public function mailFooter() {
+        return $this->renderTemplate('mails/mail_footer.twig');
+    }
+
+    public function twigInfiniteScroll() {
+        $html = '<div id="infinite-scroll"></div>
+                <div id="infinite-scroll-bottom"></div>';
+
+        return new Twig_Markup($html, 'UTF-8');
+    }
+
     /**
      * @param array $input
      * @param int $size
      *
      * @return mixed
      */
-    public function chunk($input, $size)
-    {
+    public function chunk($input, $size) {
         return array_chunk($input, $size);
     }
-    
+
     /**
      * @param $category
      * @return mixed
      */
     public function recetasrelacionadas($category, $id) {
-        /*$app = $this->getContainer();
-        $query = "SELECT bolt_recetas.* 
-                FROM bolt_recetas WHERE `id` IN (
-                    SELECT content_id AS id 
-                    FROM bolt_taxonomy 
-                    WHERE `bolt_taxonomy`.`content_id` != " . $id . " AND `bolt_taxonomy`.`contenttype` = 'recetas' AND `bolt_taxonomy`.`taxonomytype` = 'categoriesrecetas' AND `bolt_taxonomy`.`slug` = '" . $category . "' 
-                ) AND `bolt_recetas`.`status` = 'published' 
-                LIMIT 3";
+        /* $app = $this->getContainer();
+          $query = "SELECT bolt_recetas.*
+          FROM bolt_recetas WHERE `id` IN (
+          SELECT content_id AS id
+          FROM bolt_taxonomy
+          WHERE `bolt_taxonomy`.`content_id` != " . $id . " AND `bolt_taxonomy`.`contenttype` = 'recetas' AND `bolt_taxonomy`.`taxonomytype` = 'categoriesrecetas' AND `bolt_taxonomy`.`slug` = '" . $category . "'
+          ) AND `bolt_recetas`.`status` = 'published'
+          LIMIT 3";
 
-        $rows = $app['db']->executeQuery($query)->fetchAll();
+          $rows = $app['db']->executeQuery($query)->fetchAll();
 
-        $ids = implode(' || ', util::array_pluck($rows, 'id'));
-        $results = $app['storage']->getContent('recetas', array('id' => $ids, 'returnsingle' => false));
+          $ids = implode(' || ', util::array_pluck($rows, 'id'));
+          $results = $app['storage']->getContent('recetas', array('id' => $ids, 'returnsingle' => false));
 
-        return $results;*/
+          return $results; */
         return [];
     }
 
@@ -77,21 +116,20 @@ class PortalExtension extends SimpleExtension
      * To see specific bindings between route and controller method see 'connect()'
      * function in the ExampleController class.
      */
-    protected function registerFrontendControllers()
-    {
+    protected function registerFrontendControllers() {
         $app = $this->getContainer();
         $config = $this->getConfig();
 
         return [
             '/' => new FrontendController($config),
+            '/infinitescroll' => new InfiniteScrollController(),
         ];
     }
 
     /**
      * {@inheritdoc}
      */
-    protected function registerBackendControllers()
-    {
+    protected function registerBackendControllers() {
         $app = $this->getContainer();
         $config = $this->getConfig();
 
@@ -99,4 +137,5 @@ class PortalExtension extends SimpleExtension
             '/extend' => new BackendController($config),
         ];
     }
+
 }

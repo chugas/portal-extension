@@ -9,14 +9,20 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Bolt\Library as Lib;
+use Symfony\Component\Validator\Constraints as Assert;
+use Bolt\Translation\Translator as Trans;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Bolt\Filesystem\UploadContainer;
+use Sirius\Upload\Handler as UploadHandler;
+use Sirius\Upload\Result\File;
 
 /**
  * Controller class.
  *
  * @author Gaston Caldeiro <chugas488@gmail.com>
  */
-class FrontendController implements ControllerProviderInterface
-{
+class FrontendController implements ControllerProviderInterface {
+
     /** @var array The extension's configuration parameters */
     private $config;
 
@@ -25,8 +31,7 @@ class FrontendController implements ControllerProviderInterface
      *
      * @param array $config
      */
-    public function __construct(array $config)
-    {
+    public function __construct(array $config) {
         $this->config = $config;
     }
 
@@ -39,19 +44,27 @@ class FrontendController implements ControllerProviderInterface
      *
      * @return ControllerCollection A ControllerCollection instance
      */
-    public function connect(Application $app)
-    {
+    public function connect(Application $app) {
         /** @var $ctr \Silex\ControllerCollection */
         $ctr = $app['controllers_factory'];
-        
+
         $ctr->get('/contacto', [$this, 'contacto'])
-            ->bind('its-contacto');
+                ->bind('its-contacto');
+
+        $ctr->get('/secret', [$this, 'secret'])
+                ->bind('its-secret');
 
         $ctr->post('/contacto', [$this, 'contacto'])
-            ->bind('its-contacto-post');
+                ->bind('its-contacto-post');
 
         $ctr->post('/suscribe', [$this, 'addUser'])
-            ->bind('suscribe-post');
+                ->bind('suscribe-post');
+        
+        $ctr->get('/trabaja-con-nosotros', [$this, 'trabajar'])
+                ->bind('its-trabaja-con-nosotros');
+
+        $ctr->post('/trabaja-con-nosotros', [$this, 'trabajar'])
+                ->bind('its-trabaja-con-nosotros-post');
 
         return $ctr;
     }
@@ -63,23 +76,26 @@ class FrontendController implements ControllerProviderInterface
      *
      * @return string
      */
-    public function contacto(Application $app, Request $request)
-    {
-        if($request->isMethod('POST')) {
+    public function contacto(Application $app, Request $request) {        
+        if ($request->isMethod('POST')) {
             $nombre = $request->get('name');
+            $apellido = $request->get('apellido');
+            $matricula = $request->get('matricula');
             $email = $request->get('email');
             $phone = $request->get('phone');
-            $company = $request->get('company');
             $message = $request->get('msg');
 
             $subject = 'Contacto [Web]';
-            $from = 'ventas@grupobenzo.com';
+            $from = 'noreply@prolesa.com.uy';
             //$to = 'chugas488@gmail.com';
-            $to = 'jubenzo@gmail.com';
+            //$to = 'jubenzo@gmail.com';
+            $to = 'info@prolesa.com.uy';
+            
+            $params = compact('nombre', 'apellido', 'matricula', 'email', 'phone', 'message');
+            
+            if ($nombre != "" && $apellido != "" && $email != "" && $message != "") {
+                $this->sendEmail($app, $subject, $from, $to, 'mails/contacto.twig', $params);
 
-            if($nombre != "" && $email != "" && $message != ""){
-                $this->sendEmail($app, $subject, $from, $to, 'mails/contacto.twig', array('name' => $nombre, 'email' => $email, 'body' => $message, 'company' => $company, 'phone' => $phone));
-                //$app['session']->getFlashBag()->add('success', 'Tu mensaje ha sido enviado correctamente. Gracias.');
                 $jsonResponse = new JsonResponse();
 
                 $jsonResponse->setData([
@@ -89,7 +105,6 @@ class FrontendController implements ControllerProviderInterface
                 return $jsonResponse;
             }
 
-            //$app['session']->getFlashBag()->add('error', 'Tu mensaje no ha sido enviado. Revisa el formulario e intenta enviar el mensaje nuevamente.');
             $jsonResponse = new JsonResponse();
 
             $jsonResponse->setData([
@@ -99,29 +114,54 @@ class FrontendController implements ControllerProviderInterface
 
             return $jsonResponse;
             //return Lib::redirect('contact', array('v' => -1));
-
         } else {
             return $app['twig']->render('contacto.twig', [], []);
         }
     }
 
-    protected function sendEmail($app, $subject, $from, $to, $template, array $data)
-    {
+    protected function sendEmail($app, $subject, $from, $to, $template, array $data, $filename = null) {
         $htmlBody = $app['twig']->render($template, array('data' => $data));
 
         // Send a welcome email
         $message = $app['mailer']
-            ->createMessage('message')
-            ->setSubject($subject)
-            ->setFrom(array($from => 'Avicolas del Oeste'))
-            ->setTo(array($to => $data['name']))
-            ->setBody(strip_tags($htmlBody))
-            ->addPart($htmlBody, 'text/html');
+                ->createMessage('message')
+                ->setSubject($subject)
+                ->setFrom(array($from => 'Prolesa'))
+                ->setTo(array($to => 'Prolesa'))
+                ->setBody(strip_tags($htmlBody))
+                ->addPart($htmlBody, 'text/html');
 
+        if($filename != null) {
+            $message->attach(\Swift_Attachment::fromPath($filename));
+        }
+        
         return $app['mailer']->send($message);
     }
 
+    /**
+     * Controller for the "Homepage" route. Usually the front page of the website.
+     *
+     * @param \Silex\Application $app The application/container
+     *
+     * @return mixed
+     */
     public function addUser(Request $request, Application $app) {
+        $email = $request->get('email');
+        if ($this->validateEmail($email)) {
+            try {
+                if(!$app['suscriptores']->getSuscriptor($email)) {
+                    $app['suscriptores']->saveSuscriptor(array('email' => $email));
+                }
+                return new JsonResponse(array('status' => 1), 200);
+            } catch (\Exception $e) {
+                return new JsonResponse(array('status' => 0), 200);
+            }
+        } else {
+            return new JsonResponse(array('status' => 0), 200);
+        }
+    }
+    
+    public function addUserPhplist(Request $request, Application $app) {
         $email = $request->get('email');
         if ($this->validateEmail($email)) {
             //$host = 'http://newsletter.avicolasdeloeste.com.uy/';
@@ -163,11 +203,11 @@ class FrontendController implements ControllerProviderInterface
 
         ## fail on emails starting or ending "-" or "." in the pre-at, seems to happen quite often, probably cut-n-paste errors
         if (preg_match('/^-/', $email) ||
-            preg_match('/-@/', $email) ||
-            preg_match('/\.@/', $email) ||
-            preg_match('/^\./', $email) ||
-            preg_match('/^\-/', $email) ||
-            strpos($email, '\\') === 0
+                preg_match('/-@/', $email) ||
+                preg_match('/\.@/', $email) ||
+                preg_match('/^\./', $email) ||
+                preg_match('/^\-/', $email) ||
+                strpos($email, '\\') === 0
         ) {
             return 0;
         }
@@ -185,7 +225,8 @@ class FrontendController implements ControllerProviderInterface
         #   topLevelDomain can only be one of the defined ones
         $escapedChar = "\\\\[\\x01-\\x09\\x0B-\\x0C\\x0E-\\x7F]";   # CR and LF excluded for safety reasons
         $unescapedChar = "[a-zA-Z0-9!#$%&'*\+\-\/=?^_`{|}~]";
-        if (EMAIL_ADDRESS_VALIDATION_LEVEL == 2) {
+        //if (EMAIL_ADDRESS_VALIDATION_LEVEL == 2) {
+        if (2 == 2) {
             $char = "$unescapedChar";
         } else {
             $char = "($unescapedChar|$escapedChar)";
@@ -195,7 +236,8 @@ class FrontendController implements ControllerProviderInterface
         $qtext = "[\\x01-\\x09\\x0B-\\x0C\\x0E-\\x21\\x23-\\x5B\\x5D-\\x7F]"; # All but <LF> x0A, <CR> x0D, quote (") x22 and backslash (\) x5c
         $qchar = "$qtext|$escapedChar";
         $quotedString = "\"($qchar){1,62}\"";
-        if (EMAIL_ADDRESS_VALIDATION_LEVEL == 2) {
+        //if (EMAIL_ADDRESS_VALIDATION_LEVEL == 2) {
+        if (2 == 2) {
             $localPart = "$dotString";  # without escaping and quoting of local part
         } else {
             $localPart = "($dotString|$quotedString)";
@@ -211,5 +253,215 @@ class FrontendController implements ControllerProviderInterface
         } else {
             return(0);
         }
+    }
+
+    public function trabajar(Application $app, Request $request) {
+        $form = $this->getTrabajarForm($app, array())->getForm();
+
+        if ($request->isMethod('POST')) {
+            $form->submit($request);
+
+            if ($form->isValid()) {
+                $data = $form->getData();
+
+                $filename = null;
+                $file = $data['archivo'];
+                if (!is_null($file)) {
+                    $fileToProcess = array(
+                        'name' => $file->getClientOriginalName(),
+                        'tmp_name' => $file->getPathName()
+                    );
+
+                    $result = $this->getUploadHandler($app)->process($fileToProcess);
+
+                    if ($result->isValid()) {
+                        $result->confirm();
+                        if ($result instanceof File) {
+                            $filename = $app['paths']['filespath'] . '/' . $result->name;
+                        }
+                    }
+                }
+
+                $from = 'noreply@prolesa.com.uy';
+                $to = 'info@prolesa.com.uy';
+                //$to = 'chugas488@gmail.com';                
+                $this->sendEmail($app, 'Postulante [' . $data['position'] . ']', $from, $to, 'mails/trabajar.twig', $data, $filename);
+
+                // Envio email
+                return $app['twig']->render('trabajar.twig', ['form'=> $form->createView(), 'v' => 1]);
+            }
+
+        }
+
+        return $app['twig']->render('trabajar.twig', ['form'=> $form->createView()]);
+    }
+
+    /**
+     * 
+     * @param Application $app
+     * @param array $erp
+     * @return \Symfony\Component\Form\FormBuilder
+     */
+    private function getTrabajarForm(Application $app, array $erp) {
+        // Start building the form
+        $form = $app['form.factory']->createBuilder('form', $erp);
+
+        // Add the other fields
+        $form
+                ->add('name', 'text', array(
+                    'constraints' => array(
+                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu nombre')))
+                    ),
+                    'label' => 'Nombre',
+                    'attr' => array(
+                        'placeholder' => Trans::__('Nombre completo *')
+                    )
+                ))
+                ->add('email', 'text', array(
+                    'constraints' => array(
+                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar un email'))),
+                        new Assert\Email()
+                    ),
+                    'label' => 'E-mail *',
+                    'attr' => array(
+                        'placeholder' => Trans::__('E-mail *')
+                    )
+                ))
+                ->add('phone', 'text', array(
+                    'constraints' => array(
+                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu telefono/celular')))
+                    ),
+                    'label' => 'Teléfono/celular *',
+                    'attr' => array(
+                        'placeholder' => Trans::__('Teléfono/celular *')
+                    )
+                ))
+                ->add('born', 'date', array(
+                    'years' => range(1950, date('Y')),
+                    'format' => 'ddMMMMyyyy',
+                    'constraints' => array(
+                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu fecha de nacimiento')))
+                    ),
+                    'label' => 'Fecha de nacimiento *',
+                    'attr' => array(
+                        'placeholder' => Trans::__('Fecha de nacimiento *')
+                    )
+                ))
+                ->add('city', 'text', array(
+                    'constraints' => array(
+                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu localidad/ciudad')))
+                    ),
+                    'label' => 'Localidad/Ciudad *',
+                    'attr' => array(
+                        'placeholder' => 'Localidad/Ciudad *'
+                    )
+                ))
+                ->add('gender', 'choice', array(
+                    'choices'   => array('m' => 'Masculino', 'f' => 'Femenino', 'o' => 'Otro'),
+                    'empty_value' => 'Selecciona tu sexo *',
+                    'required' => true,
+                    'constraints' => array(
+                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu localidad/ciudad')))
+                    ),
+                    'label' => 'Sexo *',
+                ))
+                ->add('position', 'choice', array(
+                    'choices'   => array('Administración' => 'Administración', 'Ventas' => 'Ventas', 'Logística' => 'Logística'),
+                    'empty_value' => 'Selecciona un área a postular *',
+                    'required' => true,
+                    'constraints' => array(
+                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu localidad/ciudad')))
+                    ),
+                    'label' => 'Selecciona un área a postular *',
+                ))
+                ->add('description', 'textarea', array(
+                    'constraints' => array(
+                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar una breve descripción')))
+                    ),
+                    'label' => 'Breve descripción de tu persona *',
+                    'attr' => array(
+                        'placeholder' => Trans::__('Breve descripción de tu persona *')
+                    )
+                ))
+                ->add('archivo', 'file', array(
+                    'label' => 'currículum vitae',
+                    'required' => true,
+                    'attr' => array(
+                        'placeholder' => 'currículum vitae'
+                    )
+                ));
+
+        return $form;
+    }
+
+    public function getUploadHandler(Application $app)
+    {
+        $app_upload_namespace = 'files';
+        $app_upload_prefix = 'cvs/' . date('Y-m') . '/';
+        $app_upload_overwrite = false;
+        /******************************************************/
+        $base = $app['resources']->getPath($app_upload_namespace);
+        if (!is_writable($base)) {
+            throw new \RuntimeException("Unable to write to upload destination. Check permissions on $base", 1);
+        }
+        $container = new UploadContainer($app['filesystem']->getFilesystem($app_upload_namespace));
+        /******************************************************/
+        $allowedExensions = $app['config']->get('general/accept_file_types');
+        $uploadHandler = new UploadHandler($container);
+        $uploadHandler->setPrefix($app_upload_prefix);
+        $uploadHandler->setOverwrite($app_upload_overwrite);
+        $uploadHandler->addRule('extension', array('allowed' => $allowedExensions));
+
+        $pattern = $app['config']->get('general/upload/pattern', '[^A-Za-z0-9\.]+');
+        $replacement = $app['config']->get('general/upload/replacement', '-');
+        $lowercase = $app['config']->get('general/upload/lowercase', true);
+
+        $uploadHandler->setSanitizerCallback(
+            function ($filename) use ($pattern, $replacement, $lowercase) {
+                if ($lowercase) {
+                    return preg_replace("/$pattern/", $replacement, strtolower($filename));
+                }
+
+                return preg_replace("/$pattern/", $replacement, $filename);
+            }
+        );
+
+        return $uploadHandler;
+    }
+    
+    public function secret(){
+        $errno; $errstr;
+        $host = '190.0.154.163';
+        $port = 2525;
+        $timeout = 20;
+        $options = array();
+        $streamContext = stream_context_create($options);        
+        $_stream = @stream_socket_client($host.':'.$port, $errno, $errstr, $timeout, STREAM_CLIENT_CONNECT, $streamContext);
+        if (false === $_stream) {
+            echo 'Connection could not be established with host '. $host.' ['.$errstr.' #'.$errno.']';
+        } else {
+            echo 'Connection SUCCESS with host '. $host;
+        }
+        die();
+        
+        // Create the Transport
+        $transport = (new \Swift_SmtpTransport('190.0.154.163', 2525))
+          ->setUsername('noreply@prolesa.com.uy');
+          //->setPassword('');
+
+        // Create the Mailer using your created Transport
+        $mailer = new \Swift_Mailer($transport);
+
+        // Create a message
+        $message = (new \Swift_Message('Wonderful Subject'))
+          ->setFrom(['noreply@prolesa.com.uy' => 'Prolesa'])
+          ->setTo(['chugas488@gmail.com'])
+          ->setBody('Here is the message itself');
+
+        // Send the message
+        $result = $mailer->send($message);
+
+        var_dump($result);
+        die();
     }
 }
