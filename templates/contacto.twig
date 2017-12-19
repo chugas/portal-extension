@@ -1,0 +1,97 @@
+{% extends 'partials/_master.twig' %}
+
+{% block main %}
+
+    <!--innertitle-->
+    <div class="innerpagetitle">
+        <div class="container">
+            <h1><span>Contacto</span></h1>
+            <div class="innerbreadcrumb"> <a href="{{ path('homepage') }}">Inicio</a> / <a href="#" class="activelink">Contacto</a> </div>
+        </div>
+    </div>
+
+    <!--middle content-->
+    <div class="middlecontent">
+        <div class="container">
+            <div class="row wow fadeInDown">
+                <div class="col-md-12">
+                    <div class="section-md wow fadeInDown animated" style="visibility: visible; animation-name: fadeInDown;" data-wow-animation-name="fadeInDown">
+                        <h1>Comunicate con Nosotros!</h1>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row wow fadeInDown margin-top-50">
+                <div class="col-md-8 contact-1-form wow fadeInDown animated">
+                    <div class="alert alert-success" id="FormContactSuccessMessage" style="display:none"></div>
+                    <div class="alert alert-danger" id="FormContactErrorMessage" style="display:none"></div>
+                    <h5>Envíanos un mensaje</h5>
+                    <form id="formcontact" method="post" action="{{ path('its-contacto-post') }}">
+                        <div class="row">
+                            <div class="form-group col-sm-6">
+                                <label><strong>Nombre*</strong></label>
+                                <input name="name" id="cfname"  type="text" placeholder="Nombre" class="form-control" required />
+                            </div>
+                            <div class="form-group col-sm-6">
+                                <label><strong>Dirección de email*</strong></label>
+                                <input name="email" id="cfemail" type="text" placeholder="email" class="form-control" required />
+                            </div>
+                            <div class="form-group col-sm-6">
+                                <label><strong>Empresa</strong></label>
+                                <input name="company" id="cfcompany" type="text" placeholder="Empresa" class="form-control" />
+                            </div>
+                            <div class="form-group col-sm-6">
+                                <label><strong>Teléfono de Contacto</strong></label>
+                                {#onkeypress="return isNumber(event)" #}
+                                <input name="phone" id="cfcontact" type="text" placeholder="Teléfono" class="form-control" />
+                            </div>
+                            <div class="form-group col-sm-12">
+                                <label><strong>Su mensaje</strong></label>
+                                <textarea name="msg" id="cfbody" placeholder="Escribe aquí lo que quieras comunicarnos." class="form-control"></textarea>
+                            </div>
+                            <div class="col-sm-12">
+                                <button id="button-submit" type="submit">Enviar<i class="fa fa-1x-after fa-angle-right"></i></button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="col-md-4 contact-1-info wow fadeInDown animated">
+                    <h5>Información de Contacto</h5>
+                    <div class="inforow">
+                        <div class="info-icn"><i class="fa fa-1x-before fa-map-marker icons-blue"></i></div>
+                        <div class="contact-info"><p>Camino Manuel Flores 7880 (Montevideo - Uruguay)</p></div>
+                        <div class="clr"></div>
+                    </div>
+                    <div class="inforow">
+                        <div class="info-icn"><i class="fa fa-1x-before fa-phone icons-blue"></i></div>
+                        <div class="contact-info"><p>(+598) 2312 5612</p></div>
+                        <div class="clr"></div>
+                    </div>
+                    <div class="inforow">
+                        <div class="info-icn"><i class="fa fa-1x-before fa-envelope icons-blue"></i></div>
+                        <div class="contact-info"><p>info@avicolasdeloeste.com.uy</p></div>
+                        <div class="clr"></div>
+                    </div>
+                    <div class="inforow">
+                        <div class="info-icn"><i class="fa fa-1x-before fa-clock-o icons-blue"></i></div>
+                        <div class="contact-info"><p>Horario de Oficina: <br>Lunes - Viernes : <strong>8:00am to 6:00pm</strong> <br>Sábado - Domingo : <strong>Cerrado</strong></p></div>
+                        <div class="clr"></div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="map wow fadeInDown animated">
+            <iframe src="https://maps.google.com.au/maps?f=q&amp;source=s_q&amp;hl=en&amp;geocode=&amp;q=121+King+Street,+Melbourne,+Victoria,+3000,+Australia&amp;aq=0&amp;oq=121+King+Street,++Melbourne+Victoria+3000+Australia&amp;sll=-37.815921,144.964085&amp;sspn=0.011052,0.022724&amp;ie=UTF8&amp;hq=&amp;hnear=121+King+St,+Melbourne+Victoria+3000&amp;t=m&amp;ll=-37.80836,144.958506&amp;spn=0.023734,0.036478&amp;z=14&amp;iwloc=A&amp;output=embed"></iframe>
+        </div>
+    </div>
+
+{% endblock main %}
+
+
+{% block bottomincludes %}
+    {{ parent() }}
+    <script type="text/javascript" src="{{ paths.theme }}js/animation.js"></script>
+{% endblock bottomincludes %}
