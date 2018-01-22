@@ -89,7 +89,7 @@ class FrontendController implements ControllerProviderInterface {
             $from = 'noreply@prolesa.com.uy';
             //$to = 'chugas488@gmail.com';
             //$to = 'jubenzo@gmail.com';
-            $to = 'info@prolesa.com.uy';
+            $to = array('info@prolesa.com.uy' => 'Prolesa');
             
             $params = compact('nombre', 'apellido', 'matricula', 'email', 'phone', 'message');
             
@@ -127,7 +127,7 @@ class FrontendController implements ControllerProviderInterface {
                 ->createMessage('message')
                 ->setSubject($subject)
                 ->setFrom(array($from => 'Prolesa'))
-                ->setTo(array($to => 'Prolesa'))
+                ->setTo($to)
                 ->setBody(strip_tags($htmlBody))
                 ->addPart($htmlBody, 'text/html');
 
@@ -283,8 +283,8 @@ class FrontendController implements ControllerProviderInterface {
                 }
 
                 $from = 'noreply@prolesa.com.uy';
-                $to = 'info@prolesa.com.uy';
-                //$to = 'chugas488@gmail.com';                
+                //$to = 'chugas488@gmail.com';
+                $to = array('recursoshumanos@prolesa.com.uy', 'info@prolesa.com.uy' => 'Prolesa');
                 $this->sendEmail($app, 'Postulante [' . $data['position'] . ']', $from, $to, 'mails/trabajar.twig', $data, $filename);
 
                 // Envio email
