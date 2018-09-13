@@ -12,6 +12,9 @@ use Bolt\Asset\Target;
 use Bolt\Controller\Zone;
 use Twig_Markup;
 use Bolt\Extension\Its\Portal\Suscriptores;
+use Bolt\Extension\Its\Portal\Postulantes;
+use Bolt\Menu\MenuEntry;
+use Bolt\Extension\Its\Portal\Storage;
 
 /**
  * Portal extension class.
@@ -20,9 +23,34 @@ use Bolt\Extension\Its\Portal\Suscriptores;
  */
 class PortalExtension extends SimpleExtension {
 
+    protected function registerMenuEntries() {
+        $menu = MenuEntry::create('newsletter-menu', 'newsletter')
+                ->setLabel('Suscriptores')
+                ->setIcon('fa:newspaper-o')
+                ->setPermission('dashboard')
+                ->setRoute('newsletter-url')
+        ;
+        $menu2 = MenuEntry::create('postulantes-menu', 'postulantes')
+                ->setLabel('Postulantes')
+                ->setIcon('fa:users')
+                ->setPermission('dashboard')
+                ->setRoute('postulantes-url')
+        ;
+        
+        return [
+            $menu, $menu2
+        ];
+    }
+
     protected function registerServices(Application $app) {
         $app['suscriptores'] = $app->share(function ($app) {
             return new Suscriptores($app);
+        });
+        $app['postulantes'] = $app->share(function ($app) {
+            return new Postulantes($app);
+        });
+        $app['its_storage'] = $app->share(function ($app) {
+            return new Storage($app);
         });
     }
 
@@ -121,7 +149,7 @@ class PortalExtension extends SimpleExtension {
         $config = $this->getConfig();
 
         return [
-            '/' => new FrontendController($config),
+            '/' => new FrontendController(),
             '/infinitescroll' => new InfiniteScrollController(),
         ];
     }

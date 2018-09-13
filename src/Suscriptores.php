@@ -131,7 +131,7 @@ class Suscriptores {
 
     public function getAll($pageSize, $offset) {
         try {
-            $sql = 'SELECT * FROM `suscriptores`';
+            $sql = 'SELECT * FROM `suscriptores` ORDER BY id DESC';
 
             $query = $this->app['db']->getDatabasePlatform()->modifyLimitQuery($sql, $pageSize, $offset);
             return $this->db->executeQuery($query)->fetchAll();
@@ -150,6 +150,16 @@ class Suscriptores {
             $count = $query->execute()->fetch();
 
             return (integer) $count['count'];
+        } catch (DBALException $e) {
+            // Oops. Organization will get a warning on the dashboard about tables that need to be repaired.
+        }
+        return false;
+    }
+    
+    public function getEmails() {
+        try {
+            $sql = 'SELECT email FROM `suscriptores` ORDER BY id DESC';
+            return $this->db->executeQuery($sql)->fetchAll();
         } catch (DBALException $e) {
             // Oops. Organization will get a warning on the dashboard about tables that need to be repaired.
         }

@@ -140,7 +140,7 @@ class InfiniteScrollController extends Base {
         }
 
         $order = $this->getOption('theme/listing_sort', false) ?: $this->getOption('general/listing_sort');
-        $content = $this->app['storage']->getContentByTaxonomy($taxonomytype, $slug, ['limit' => $amount, 'order' => $order, 'page' => $page]);
+        $content = $this->app['its_storage']->getNovedadesByTaxonomy($taxonomytype, $slug, ['limit' => $amount, 'order' => $order, 'page' => $page]);
 
         $template = 'partials/_news.twig';
 

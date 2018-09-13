@@ -15,38 +15,23 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Bolt\Filesystem\UploadContainer;
 use Sirius\Upload\Handler as UploadHandler;
 use Sirius\Upload\Result\File;
+use Bolt\Controller\Base;
 
 /**
  * Controller class.
  *
  * @author Gaston Caldeiro <chugas488@gmail.com>
  */
-class FrontendController implements ControllerProviderInterface {
-
-    /** @var array The extension's configuration parameters */
-    private $config;
-
-    /**
-     * Initiate the controller with Bolt Application instance and extension config.
-     *
-     * @param array $config
-     */
-    public function __construct(array $config) {
-        $this->config = $config;
-    }
-
-    /**
-     * Specify which method handles which route.
-     *
-     * Base route/path is '/example/url'
-     *
-     * @param Application $app An Application instance
-     *
-     * @return ControllerCollection A ControllerCollection instance
-     */
+class FrontendController extends Base {
+    
     public function connect(Application $app) {
-        /** @var $ctr \Silex\ControllerCollection */
+        $this->app = $app;
         $ctr = $app['controllers_factory'];
+
+        $ctr->match('/{taxonomytype}/{slug}', [$this, 'taxonomy'])
+                ->method('GET')
+                ->assert('taxonomytype', 'categories|categoria|tag|tags')
+                ->bind('taxonomylink');
 
         $ctr->get('/contacto', [$this, 'contacto'])
                 ->bind('its-contacto');
@@ -65,9 +50,40 @@ class FrontendController implements ControllerProviderInterface {
 
         $ctr->post('/trabaja-con-nosotros', [$this, 'trabajar'])
                 ->bind('its-trabaja-con-nosotros-post');
-
+        
         return $ctr;
     }
+    
+    protected function addRoutes(ControllerCollection $c){
+        
+    }
+    
+    /*protected function addRoutes(ControllerCollection $ctr){
+        //$ctr = $app['controllers_factory'];
+        
+        $ctr->match('/{taxonomytype}/{slug}', [$this, 'taxonomy'])
+                ->method('GET')->bind('taxonomylinks');
+        
+        $ctr->get('/contacto', [$this, 'contacto'])
+                ->bind('its-contacto');
+
+        $ctr->get('/secret', [$this, 'secret'])
+                ->bind('its-secret');
+
+        $ctr->post('/contacto', [$this, 'contacto'])
+                ->bind('its-contacto-post');
+
+        $ctr->post('/suscribe', [$this, 'addUser'])
+                ->bind('suscribe-post');
+        
+        $ctr->get('/trabaja-con-nosotros', [$this, 'trabajar'])
+                ->bind('its-trabaja-con-nosotros');
+
+        $ctr->post('/trabaja-con-nosotros', [$this, 'trabajar'])
+                ->bind('its-trabaja-con-nosotros-post');
+
+        return $ctr;        
+    }*/
 
     /**
      * Handles GET requests on /contacto and return a template.
@@ -87,8 +103,9 @@ class FrontendController implements ControllerProviderInterface {
 
             $subject = 'Contacto [Web]';
             $from = 'noreply@prolesa.com.uy';
-            //$to = 'chugas488@gmail.com';
+            //$to = array('chugas488@gmail.com', 'jubenzo@gmail.com');
             //$to = 'jubenzo@gmail.com';
+
             $to = array('info@prolesa.com.uy' => 'Prolesa');
             
             $params = compact('nombre', 'apellido', 'matricula', 'email', 'phone', 'message');
@@ -120,11 +137,11 @@ class FrontendController implements ControllerProviderInterface {
     }
 
     protected function sendEmail($app, $subject, $from, $to, $template, array $data, $filename = null) {
+        //$app['config']->get('general/mailoptions')
         $htmlBody = $app['twig']->render($template, array('data' => $data));
 
         // Send a welcome email
-        $message = $app['mailer']
-                ->createMessage('message')
+        $message = \Swift_Message::newInstance()
                 ->setSubject($subject)
                 ->setFrom(array($from => 'Prolesa'))
                 ->setTo($to)
@@ -134,8 +151,16 @@ class FrontendController implements ControllerProviderInterface {
         if($filename != null) {
             $message->attach(\Swift_Attachment::fromPath($filename));
         }
-        
-        return $app['mailer']->send($message);
+
+        $transport = (new \Swift_SmtpTransport('190.0.154.163', 2525))
+          ->setUsername('noreply')
+          ->setPassword('PR0le$a.01');
+
+        // Create the Mailer using your created Transport
+        $mailer = new \Swift_Mailer($transport);
+
+        //return $app['mailer']->send($message);        
+        return $mailer->send($message);
     }
 
     /**
@@ -256,7 +281,7 @@ class FrontendController implements ControllerProviderInterface {
     }
 
     public function trabajar(Application $app, Request $request) {
-        $form = $this->getTrabajarForm($app, array())->getForm();
+        $form = $this->getTrabajarForm($app, array(), $request)->getForm();
 
         if ($request->isMethod('POST')) {
             $form->submit($request);
@@ -266,29 +291,64 @@ class FrontendController implements ControllerProviderInterface {
 
                 $filename = null;
                 $file = $data['archivo'];
+                $area_id = (array_key_exists('area_id', $data) ? $data['area_id'] : NULL);
+
                 if (!is_null($file)) {
                     $fileToProcess = array(
                         'name' => $file->getClientOriginalName(),
                         'tmp_name' => $file->getPathName()
                     );
 
-                    $result = $this->getUploadHandler($app)->process($fileToProcess);
+                    $handler = $this->getUploadHandler($app); 
+                    $result = $handler->process($fileToProcess);
 
                     if ($result->isValid()) {
                         $result->confirm();
                         if ($result instanceof File) {
                             $filename = $app['paths']['filespath'] . '/' . $result->name;
+                            $llamado_id = (array_key_exists('llamado_id', $data) ? $data['llamado_id'] : NULL);
+                            if(!is_null($llamado_id)) {
+                                $llamado = $app['storage']->getContent('llamados', array('id' => $llamado_id, 'returnsingle' => true));
+                                $area_id = $llamado->relation['areas'][0];
+                                $data['llamado'] = $llamado;
+                            }
+                                 
+                            $params = array(
+                                'nombre' => $data['name'],
+                                'email' => $data['email'],
+                                'telefono' => $data['phone'],
+                                'ciudad' => $data['city'],
+                                'fecha_nacimiento' => $data['born']->format("Y-m-d"),
+                                'genero' => $data['gender'],
+                                'area_id' => $area_id,
+                                'llamado_id' => $llamado_id,
+                                'descripcion' => $data['description'],
+                                'cv' => $result->name
+                            );
+                            $app['postulantes']->savePostulante($params);
                         }
+                    } else {
+                        
+                        $messages = $result->getMessages();
+                        $errors = implode(', ', $messages);
+                        return $app['twig']->render('trabajar.twig', ['form'=> $form->createView(), 'v' => -1, 'errors' => $errors]);
+
                     }
                 }
 
+                $area = $app['storage']->getContent('areas', array('id' => $area_id, 'returnsingle' => true));
+                $data['area'] = $area;
+                
                 $from = 'noreply@prolesa.com.uy';
-                //$to = 'chugas488@gmail.com';
+                //$to = array('chugas488@gmail.com', 'jubenzo@gmail.com');
                 $to = array('recursoshumanos@prolesa.com.uy', 'info@prolesa.com.uy' => 'Prolesa');
-                $this->sendEmail($app, 'Postulante [' . $data['position'] . ']', $from, $to, 'mails/trabajar.twig', $data, $filename);
+                $this->sendEmail($app, 'Postulante [' . $area->getTitle() . ']', $from, $to, 'mails/trabajar.twig', $data, $filename);
 
                 // Envio email
+                unset($form);
+                $form = $this->getTrabajarForm($app, array())->getForm();
                 return $app['twig']->render('trabajar.twig', ['form'=> $form->createView(), 'v' => 1]);
+
             }
 
         }
@@ -302,95 +362,148 @@ class FrontendController implements ControllerProviderInterface {
      * @param array $erp
      * @return \Symfony\Component\Form\FormBuilder
      */
-    private function getTrabajarForm(Application $app, array $erp) {
+    private function getTrabajarForm(Application $app, array $erp, $request = null) {
         // Start building the form
         $form = $app['form.factory']->createBuilder('form', $erp);
 
         // Add the other fields
         $form
-                ->add('name', 'text', array(
-                    'constraints' => array(
-                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu nombre')))
-                    ),
-                    'label' => 'Nombre',
-                    'attr' => array(
-                        'placeholder' => Trans::__('Nombre completo *')
-                    )
-                ))
-                ->add('email', 'text', array(
-                    'constraints' => array(
-                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar un email'))),
-                        new Assert\Email()
-                    ),
-                    'label' => 'E-mail *',
-                    'attr' => array(
-                        'placeholder' => Trans::__('E-mail *')
-                    )
-                ))
-                ->add('phone', 'text', array(
-                    'constraints' => array(
-                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu telefono/celular')))
-                    ),
-                    'label' => 'Teléfono/celular *',
-                    'attr' => array(
-                        'placeholder' => Trans::__('Teléfono/celular *')
-                    )
-                ))
-                ->add('born', 'date', array(
-                    'years' => range(1950, date('Y')),
-                    'format' => 'ddMMMMyyyy',
-                    'constraints' => array(
-                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu fecha de nacimiento')))
-                    ),
-                    'label' => 'Fecha de nacimiento *',
-                    'attr' => array(
-                        'placeholder' => Trans::__('Fecha de nacimiento *')
-                    )
-                ))
-                ->add('city', 'text', array(
-                    'constraints' => array(
-                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu localidad/ciudad')))
-                    ),
-                    'label' => 'Localidad/Ciudad *',
-                    'attr' => array(
-                        'placeholder' => 'Localidad/Ciudad *'
-                    )
-                ))
-                ->add('gender', 'choice', array(
-                    'choices'   => array('m' => 'Masculino', 'f' => 'Femenino', 'o' => 'Otro'),
-                    'empty_value' => 'Selecciona tu sexo *',
-                    'required' => true,
-                    'constraints' => array(
-                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu localidad/ciudad')))
-                    ),
-                    'label' => 'Sexo *',
-                ))
-                ->add('position', 'choice', array(
-                    'choices'   => array('Administración' => 'Administración', 'Ventas' => 'Ventas', 'Logística' => 'Logística'),
-                    'empty_value' => 'Selecciona un área a postular *',
-                    'required' => true,
-                    'constraints' => array(
-                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu localidad/ciudad')))
-                    ),
-                    'label' => 'Selecciona un área a postular *',
-                ))
-                ->add('description', 'textarea', array(
-                    'constraints' => array(
-                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar una breve descripción')))
-                    ),
-                    'label' => 'Breve descripción de tu persona *',
-                    'attr' => array(
-                        'placeholder' => Trans::__('Breve descripción de tu persona *')
-                    )
-                ))
-                ->add('archivo', 'file', array(
-                    'label' => 'currículum vitae',
-                    'required' => true,
-                    'attr' => array(
-                        'placeholder' => 'currículum vitae'
-                    )
-                ));
+            ->add('name', 'text', array(
+                'constraints' => array(
+                    new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu nombre')))
+                ),
+                'label' => 'Nombre',
+                'attr' => array(
+                    'placeholder' => Trans::__('Nombre completo *')
+                )
+            ))
+            ->add('email', 'text', array(
+                'constraints' => array(
+                    new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar un email'))),
+                    new Assert\Email()
+                ),
+                'label' => 'E-mail *',
+                'attr' => array(
+                    'placeholder' => Trans::__('E-mail *')
+                )
+            ))
+            ->add('phone', 'text', array(
+                'constraints' => array(
+                    new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu telefono/celular')))
+                ),
+                'label' => 'Teléfono/celular *',
+                'attr' => array(
+                    'placeholder' => Trans::__('Teléfono/celular *')
+                )
+            ))
+            ->add('born', 'date', array(
+                'years' => range(1950, date('Y')),
+                'format' => 'ddMMMMyyyy',
+                'constraints' => array(
+                    new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu fecha de nacimiento')))
+                ),
+                'label' => 'Fecha de nacimiento *',
+                'attr' => array(
+                    'placeholder' => Trans::__('Fecha de nacimiento *')
+                )
+            ))
+            ->add('city', 'text', array(
+                'constraints' => array(
+                    new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu localidad/ciudad')))
+                ),
+                'label' => 'Localidad/Ciudad *',
+                'attr' => array(
+                    'placeholder' => 'Localidad/Ciudad *'
+                )
+            ))
+            ->add('gender', 'choice', array(
+                'choices'   => array('m' => 'Masculino', 'f' => 'Femenino', 'o' => 'Otro'),
+                'empty_value' => 'Selecciona tu sexo *',
+                'required' => true,
+                'constraints' => array(
+                    new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar tu localidad/ciudad')))
+                ),
+                'label' => 'Sexo *',
+            ))
+            ->add('description', 'textarea', array(
+                'constraints' => array(
+                    new Assert\NotBlank(array('message' => Trans::__('Por favor, debes ingresar una breve descripción')))
+                ),
+                'label' => 'Breve descripción de tu persona *',
+                'attr' => array(
+                    'placeholder' => Trans::__('Breve descripción de tu persona *')
+                )
+            ))
+            ->add('archivo', 'file', array(
+                'label' => 'currículum vitae',
+                'required' => true,
+                'attr' => array(
+                    'placeholder' => 'currículum vitae'
+                )
+            ));
 
+        $llamados = $app['storage']->getContent('llamados', array('status' => 'published'));
+        $llamadosChoices = array_map(function($record){
+            return $record->getTitle();
+        }, $llamados);
+        
+        $attr = array();
+        $constraints = array();
+        $attrLlamados = array();
+        $constraintsLlamados = array();
+        
+        if(count($llamadosChoices) > 0) {
+            if (!is_null($request) && $request->isMethod('POST')) {
+                $data = $request->request->all();
+                $onlyArea = array_key_exists('only_area', $data['form']) && $data['form']['only_area'];
+                if(!$onlyArea){
+                    $attr = array('disabled' => 'disabled');
+                    $constraintsLlamados = array(
+                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes elegir un llamado')))
+                    );
+                } else {
+                    $attrLlamados = array('disabled' => 'disabled');
+                    $constraints = array(
+                        new Assert\NotBlank(array('message' => Trans::__('Por favor, debes elegir el área a postular')))
+                    );
+                }
+            } else {
+                $attr = array('disabled' => 'disabled');
+            }
+
+            $form->add('only_area', 'checkbox', array(
+                'label'     => 'Solo quiero enviar mi CV para ser considerado en futuros llamados',
+                'required'  => false,
+            ));
+            $form->add('llamado_id', 'choice', array(
+                'choices'   => $llamadosChoices,
+                'empty_value' => 'Selecciona un llamado *',
+                'required' => false,
+                'constraints' => $constraintsLlamados,
+                'label' => 'Selecciona un llamado *',
+                'attr' => $attrLlamados
+            ));
+        } else {
+            $constraints = array(
+                new Assert\NotBlank(array('message' => Trans::__('Por favor, debes elegir el área a postular')))
+            );
+        }
+        
+        $areas = $app['storage']->getContent('areas', array('status' => 'published'));
+
+        $areasChoices = array_map(function($record){
+            return $record->getTitle();
+        }, $areas);
+
+        $form->add('area_id', 'choice', array(
+            'choices'   => $areasChoices,
+            'empty_value' => 'Selecciona un área a postular *',
+            'required' => false,
+            'constraints' => $constraints,
+            'label' => 'Selecciona un área a postular *',
+            'attr' => $attr
+        ));
+        
         return $form;
     }
 
@@ -406,7 +519,8 @@ class FrontendController implements ControllerProviderInterface {
         }
         $container = new UploadContainer($app['filesystem']->getFilesystem($app_upload_namespace));
         /******************************************************/
-        $allowedExensions = $app['config']->get('general/accept_file_types');
+        //$allowedExensions = $app['config']->get('general/accept_file_types');
+        $allowedExensions = array( 'doc', 'docx', 'pdf', 'odt' );
         $uploadHandler = new UploadHandler($container);
         $uploadHandler->setPrefix($app_upload_prefix);
         $uploadHandler->setOverwrite($app_upload_overwrite);
@@ -442,12 +556,12 @@ class FrontendController implements ControllerProviderInterface {
         } else {
             echo 'Connection SUCCESS with host '. $host;
         }
-        die();
+        //die();
         
         // Create the Transport
         $transport = (new \Swift_SmtpTransport('190.0.154.163', 2525))
-          ->setUsername('noreply@prolesa.com.uy');
-          //->setPassword('');
+          ->setUsername('noreply') //@prolesa.com.uy
+          ->setPassword('PR0le$a.01');
 
         // Create the Mailer using your created Transport
         $mailer = new \Swift_Mailer($transport);
@@ -463,5 +577,66 @@ class FrontendController implements ControllerProviderInterface {
 
         var_dump($result);
         die();
+    }
+    
+    public function taxonomy(Request $request, $taxonomytype, $slug)
+    {
+        $taxonomy = $this->app['its_storage']->getTaxonomyType($taxonomytype);
+        // No taxonomytype, no possible content.
+        if (empty($taxonomy)) {
+            return false;
+        }
+        $taxonomyslug = $taxonomy['slug'];
+
+        // First, get some content
+        $context = $taxonomy['singular_slug'] . '_' . $slug;
+        $page = $this->app['pager']->getCurrentPage($context);
+        // Theme value takes precedence over default config @see https://github.com/bolt/bolt/issues/3951
+        $amount = $this->getOption('theme/listing_records', false) ?: $this->getOption('general/listing_records');
+
+        // Handle case where listing records has been override for specific taxonomy
+        if (array_key_exists('listing_records', $taxonomy) && is_int($taxonomy['listing_records'])) {
+            $amount = $taxonomy['listing_records'];
+        }
+
+        $order = $this->getOption('theme/listing_sort', false) ?: $this->getOption('general/listing_sort');
+        $content = $this->app['its_storage']->getNovedadesByTaxonomy($taxonomytype, $slug, ['limit' => $amount, 'order' => $order, 'page' => $page]);
+
+        if (!$this->isTaxonomyValid($content, $slug, $taxonomy)) {
+            $this->abort(Response::HTTP_NOT_FOUND, "No slug '$slug' in taxonomy '$taxonomyslug'");
+        }
+
+        $template = $this->templateChooser()->taxonomy($taxonomyslug);
+
+        // Get a display value for slug. This should be moved from 'slug' context key to 'name' in v4.0.
+        $name = $slug;
+        if ($taxonomy['behaves_like'] !== 'tags' && isset($taxonomy['options'][$slug])) {
+            $name = $taxonomy['options'][$slug];
+        }
+
+        $globals = [
+            'records'      => $content,
+            'slug'         => $name,
+            'taxonomy'     => $this->getOption('taxonomy/' . $taxonomyslug),
+            'taxonomytype' => $taxonomyslug,
+        ];
+
+        return $this->render($template, [], $globals);
+    }
+    
+    protected function isTaxonomyValid($content, $slug, array $taxonomy)
+    {
+        if ($taxonomy['behaves_like'] === 'tags' && !$content) {
+            return false;
+        }
+
+        $isNotTag = in_array($taxonomy['behaves_like'], ['categories', 'grouping']);
+        $options = isset($taxonomy['options']) ? array_keys($taxonomy['options']) : [];
+        $isTax = in_array($slug, $options);
+        if ($isNotTag && !$isTax) {
+            return false;
+        }
+
+        return true;
     }
 }
